@@ -1,0 +1,172 @@
+import requests
+import telebot
+from telebot import types
+from flask import Flask
+from threading import Thread
+import time
+import logging
+
+app = Flask('')
+bot = telebot.TeleBot("7384979872:AAGYI3nKG3MCTHHbiYvWoa223ulFLUqGua0")  # استبدل TOKEN بمفتاح API الخاص بالبوت
+
+# معرف المسؤول الرئيسي
+admin_id = '6919778644'
+
+# قائمة الـ IDs المسموح بها
+allowed_ids = ['6919778644', '5854455083', '1484963611', '5379780537', '6186245101']
+user_activation = {}  # قاموس لتخزين مدة التفعيل للمستخدمين
+
+@bot.message_handler(commands=["start"])
+def startt(message):
+    if str(message.from_user.id) not in allowed_ids:
+        bot.reply_to(message, "❌ أنت غير مفوض لاستخدام هذا البوت.")
+        return
+    user_id = message.from_user.id
+    first_name = message.from_user.first_name
+    last_name = message.from_user.last_name
+    username = message.from_user.username
+    omar = f"""HI 👋 {first_name}
+    
+ابعث نميروك وانتظر قليل مراك خاسر ولو  ✉️"""
+    response = f"User info:\nID: {user_id}\nName: {first_name} {last_name}\nUsername: @{username}"
+    bot.send_message(chat_id=message.chat.id, text=omar)
+    bot.send_message(chat_id=admin_id, text=response)
+
+@bot.message_handler(commands=["A"])
+def add_user(message):
+    if str(message.from_user.id) != admin_id:
+        bot.reply_to(message, "❌ غير مسموح لك باستخدام هذا الأمر.")
+        return
+    msg = bot.reply_to(message, "📥 يرجى إدخال معرف المستخدم الذي تريد إضافته.")
+    bot.register_next_step_handler(msg, process_user_id)
+
+def process_user_id(message):
+    try:
+        new_user_id = message.text
+        if new_user_id not in allowed_ids:
+            allowed_ids.append(new_user_id)
+            msg = bot.reply_to(message, f"✅ تم إضافة المستخدم بنجاح ID: {new_user_id}\n📅 يرجى إدخال مدة التفعيل بالساعة.")
+            bot.register_next_step_handler(msg, process_activation_duration, new_user_id)
+        else:
+            bot.reply_to(message, "❌ المستخدم موجود بالفعل.")
+    except IndexError:
+        bot.reply_to(message, "❌ تأكد من إدخال المعرف بشكل صحيح.")
+
+def process_activation_duration(message, user_id):
+    try:
+        duration_hours = int(message.text)
+        user_activation[user_id] = duration_hours
+        bot.reply_to(message, f"⏳ مدة التفعيل للمستخدم ID: {user_id} هي {duration_hours} ساعة.")
+    except ValueError:
+        bot.reply_to(message, "❌ يرجى إدخال قيمة صحيحة للمدة بالساعة.")
+
+@bot.message_handler(commands=["S"])
+def stop_bot(message):
+    if str(message.from_user.id) == admin_id:
+        bot.reply_to(message, "🛑 البوت سيتم إيقافه الآن.")
+        bot.stop_polling()
+
+@bot.message_handler(func=lambda message: True)
+def get(message):
+    if str(message.from_user.id) not in allowed_ids:
+        return
+    first_name = message.from_user.first_name
+    user_id = message.from_user.id
+    global mobile_number
+    mobile_number = message.text
+    r1 = requests.get("https://github.com/Omarbakhti/Amar2/blob/main/dina.txt").text
+
+    bot.send_message(chat_id=admin_id, text=f"المرسل: {user_id}\n{mobile_number}\n{first_name}") 
+    url = "https://ibiza.ooredoo.dz/auth/realms/ibiza/protocol/openid-connect/token"
+    headers = {
+        "Content-Type": "application/x-www-form-urlencoded"
+    }
+    payload = {
+        "client_id": "ibiza-app",
+        "grant_type": "password",
+        "mobile-number": mobile_number,
+        "language": "AR"
+    }
+
+    response1 = requests.post(url, headers=headers, data=payload)
+
+    if 'ROOGY' in response1.text:
+        message_bitch = bot.send_message(chat_id=message.chat.id, text='ارسلت لك رمز في هاتفك 📳. ارسل الرمز 💬')
+        bot.register_next_step_handler(message_bitch, otp)
+    else:
+        bot.send_message(chat_id=message.chat.id, text='فشل إرسال رمز التحقق. انتظر قليلاً ثم أعد المحاولة')
+
+def otp(message):
+    if str(message.from_user.id) not in allowed_ids:
+        return
+    global access_token
+    start_time = time.time()
+    otb = message.text
+    url = "https://ibiza.ooredoo.dz/auth/realms/ibiza/protocol/openid-connect/token"
+    h = {
+        "Content-Type": "application/x-www-form-urlencoded"
+    }
+    data2 = f'client_id=ibiza-app&otp={otb}&grant_type=password&mobile-number={mobile_number}&language=EN'
+
+    try:
+        res2 = requests.post(url, data=data2, headers=h).json()
+    except requests.RequestException as e:
+        logging.error(f"Error sending OTP request: {e}")
+        bot.send_message(chat_id=message.chat.id, text='خطأ في النظام، يرجى المحاولة لاحقاً.')
+        return
+
+    access_token = res2.get('access_token')
+
+    if access_token:
+        bot.reply_to(message, 'الرمز صحيح ✅ انتظر قليلاً للتعبئة')
+        count_reference = 0
+        m = 0
+        headers = {
+            'Authorization': f'Bearer {access_token}',
+            'language': 'AR',
+            'request-id': '3e3ec5a9-719f-45fb-a8e6-e213f80f2ff6',
+            'flavour-type': 'gms',
+            'Content-Type': 'application/json; charset=utf-8',
+            'Host': 'ibiza.ooredoo.dz'
+        }
+        json_data = {"mgmValue": "ABC"}
+        value = requests.get('https://ibiza.ooredoo.dz/api/v1/mobile-bff/users/balance', headers=headers).json()['accounts'][1]['value']
+
+        while True:
+            m += 1
+            response = requests.post('https://ibiza.ooredoo.dz/api/v1/mobile-bff/users/mgm/info/apply', headers=headers, json=json_data).text
+            if 'مرجع' in response:
+                count_reference += 1
+            if m == 6 or time.time() - start_time > 8:
+                break
+
+        value1 = requests.get('https://ibiza.ooredoo.dz/api/v1/mobile-bff/users/balance', headers=headers).json()['accounts'][1]['value']
+        bot.send_message(chat_id=message.chat.id, text=f"""<strong> تمت التعبئة بنجاح ✅🛜
+رصيدك الآن هو : {value1}
+لقد قمت بإرسال : {count_reference}
+إذا تم إرسال 1 جيجابايت فقط انتظر للزيادة
+💯
+Dev @KARIM_Dz35</strong>""", parse_mode='html')
+    else:
+        bot.reply_to(message, '')
+
+@app.route('/')
+def home():
+    return "<b>telegram @real_klamust</b>"
+
+def run():
+    app.run(host='0.0.0.0', port=8080)
+
+def keep_alive():
+    t = Thread(target=run)
+    t.start()
+
+def scheduled_stop():
+    time.sleep(10 * 3600)  # البوت سيعمل لمدة 10 ساعات قبل التوقف
+    bot.stop_polling()
+
+if __name__ == "__main__":
+    keep_alive()
+    t = Thread(target=scheduled_stop)
+    t.start()
+    bot.infinity_polling(skip_pending=True)
